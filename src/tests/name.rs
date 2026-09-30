@@ -1,3 +1,4 @@
+use crate::name::{is_id_first, is_id_rest};
 use crate::tests::util::test_ctx;
 use std::error::Error;
 use std::borrow::Cow;
@@ -42,4 +43,23 @@ fn pfx_test_str1() -> Result<(), Box<dyn Error>> {
     })
 }
 
-
+#[test]
+fn identifier_characters() {
+    // Both ends of each of Lean's ranges, and the characters just outside them.
+    let first =
+        ['a', 'z', 'A', 'Z', '_', 'α', 'ω', 'Α', 'Ω', 'ϊ', 'ϻ', 'ἀ', '῾', '℀', '⅏', '𝒜', '𝖟', 'À', 'ÿ', 'Ā', 'ſ'];
+    let rest = ['0', '9', '\'', '!', '?', '₀', '₉', 'ₐ', 'ₜ', 'ᵢ', 'ᵪ', 'ⱼ'];
+    let neither = [
+        'λ', 'Π', 'Σ', '×', '÷', 'ΐ', 'Ϊ', 'ΰ', 'ϼ', 'ỿ', '\u{1fff}', '\u{20ff}', '⅐', '𝒛', '𝖠', '¿', 'ƀ', 'ⁿ', '₊',
+        '\u{208f}', '\u{209d}', 'ᵡ', 'ᵫ', 'ⱻ', 'ⱽ', '.', ' ', '«', '»', '-', '#',
+    ];
+    for c in first {
+        assert!(is_id_first(c) && is_id_rest(c), "{c:?}");
+    }
+    for c in rest {
+        assert!(!is_id_first(c) && is_id_rest(c), "{c:?}");
+    }
+    for c in neither {
+        assert!(!is_id_first(c) && !is_id_rest(c), "{c:?}");
+    }
+}

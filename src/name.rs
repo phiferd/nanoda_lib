@@ -89,3 +89,28 @@ impl<'x, 't: 'x, 'p: 't> TcCtx<'t, 'p> {
         }
     }
 }
+
+// Identifier characters, following `isLetterLike`, `isSubScriptAlnum`, `isIdFirst` and `isIdRest` in
+// https://github.com/leanprover/lean4/blob/470d5ce1400764999581fd26d5d72b00d990b0f4/src/Init/Meta/Defs.lean#L101-L134
+fn is_letter_like(c: char) -> bool {
+    let c = c as u32;
+    ((0x3b1..=0x3c9).contains(&c) && c != 0x3bb) // Lower greek, but lambda
+        || ((0x391..=0x3a9).contains(&c) && c != 0x3a0 && c != 0x3a3) // Upper greek, but Pi and Sigma
+        || (0x3ca..=0x3fb).contains(&c) // Coptic letters
+        || (0x1f00..=0x1ffe).contains(&c) // Polytonic Greek Extended Character Set
+        || (0x2100..=0x214f).contains(&c) // Letter like block
+        || (0x1d49c..=0x1d59f).contains(&c) // Latin letters, Script, Double-struck, Fractur
+        || ((0xc0..=0xff).contains(&c) && c != 0xd7 && c != 0xf7) // Latin-1 supplement letters but × and ÷
+        || (0x100..=0x17f).contains(&c) // Latin Extended-A
+}
+
+fn is_sub_script_alnum(c: char) -> bool {
+    let c = c as u32;
+    (0x2080..=0x2089).contains(&c) || (0x2090..=0x209c).contains(&c) || (0x1d62..=0x1d6a).contains(&c) || c == 0x2c7c
+}
+
+pub(crate) fn is_id_first(c: char) -> bool { c.is_ascii_alphabetic() || c == '_' || is_letter_like(c) }
+
+pub(crate) fn is_id_rest(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '\'' | '!' | '?') || is_letter_like(c) || is_sub_script_alnum(c)
+}
