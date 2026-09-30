@@ -114,3 +114,65 @@ pub(crate) fn is_id_first(c: char) -> bool { c.is_ascii_alphabetic() || c == '_'
 pub(crate) fn is_id_rest(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '_' | '\'' | '!' | '?') || is_letter_like(c) || is_sub_script_alnum(c)
 }
+
+fn is_id(s: &str) -> bool {
+    let mut chars = s.chars();
+    chars.next().is_some_and(is_id_first) && chars.all(is_id_rest)
+}
+
+/// A name component. Outside the export file's name table, a name is a `Vec<NameComponent>` in
+/// source order, e.g. `Quot.sound` is `[Str("Quot"), Str("sound")]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NameComponent {
+    Str(String),
+    Num(u64),
+}
+
+/// Parses a name like Lean's `String.toName`: components are separated by `.`, a component written
+/// between `«` and `»` is taken as is, and a run of digits is a numeric component, e.g. `Quot.sound`,
+/// `«Quot.sound»` or `Foo.«bar baz».1`.
+///
+/// Where `String.toName` would give the anonymous name (empty or malformed input), this gives `None`,
+/// as it does for a numeric component that doesn't fit in a `u64`.
+pub(crate) fn parse_name(s: &str) -> Option<Vec<NameComponent>> {
+    let mut components = Vec::new();
+    let mut rest = s;
+    loop {
+        let c = rest.chars().next()?;
+        let (component, tail) = if let Some(escaped) = rest.strip_prefix('«') {
+            let (inner, tail) = escaped.split_once('»')?;
+            (NameComponent::Str(inner.to_string()), tail)
+        } else if is_id_first(c) {
+            let end = rest.find(|c| !is_id_rest(c)).unwrap_or(rest.len());
+            (NameComponent::Str(rest[..end].to_string()), &rest[end..])
+        } else if c.is_ascii_digit() {
+            let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+            (NameComponent::Num(rest[..end].parse().ok()?), &rest[end..])
+        } else {
+            return None
+        };
+        components.push(component);
+        if tail.is_empty() {
+            return Some(components)
+        }
+        rest = tail.strip_prefix('.')?;
+    }
+}
+
+/// Formats a name for messages. String components that are not identifiers are escaped with `«»` as
+/// in Lean's `Name.toString`, except that escaping is never turned off (Lean prints e.g. hygienic and
+/// inaccessible names without it). A component that contains `»` can't be escaped and is left as is.
+pub(crate) fn format_name(components: &[NameComponent]) -> String {
+    if components.is_empty() {
+        return "[anonymous]".to_string()
+    }
+    components
+        .iter()
+        .map(|component| match component {
+            NameComponent::Str(s) if is_id(s) || s.contains('»') => s.clone(),
+            NameComponent::Str(s) => format!("«{}»", s),
+            NameComponent::Num(n) => n.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(".")
+}
