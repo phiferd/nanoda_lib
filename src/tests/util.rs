@@ -1,6 +1,6 @@
 use crate::util::{Config, CowStr, ExportFile, ExprPtr, LevelPtr, TcCtx};
-use rand::distributions::Alphanumeric;
-use rand::{rngs::ThreadRng, Rng};
+use rand::distr::Alphanumeric;
+use rand::rngs::ThreadRng;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
@@ -102,6 +102,7 @@ fn check_proj_from_prop() {
 }
 
 pub(crate) fn rand_string<'t>(rng: &mut ThreadRng, size: usize) -> CowStr<'t> {
+    use rand::RngExt;
     let rand_string: String = rng.sample_iter(&Alphanumeric).take(size).map(char::from).collect();
     CowStr::Owned(rand_string)
 }
@@ -110,8 +111,7 @@ pub(crate) fn rand_string<'t>(rng: &mut ThreadRng, size: usize) -> CowStr<'t> {
 fn hash_test0() -> Result<(), Box<dyn Error>> {
     use crate::expr::Expr;
     use crate::hash64;
-    use num_bigint::{BigUint, RandBigInt};
-    use rand::thread_rng;
+    use num_bigint::{BigRng010, BigUint};
 
     let (disabled_export, _) = test_get_export_file(None)?;
     disabled_export.with_ctx(|ctx| {
@@ -124,7 +124,7 @@ fn hash_test0() -> Result<(), Box<dyn Error>> {
     enabled_config.string_extension = true;
     let (export, _) = enabled_config.to_export_file()?;
 
-    let mut rng = thread_rng();
+    let mut rng = rand::rng();
     export.with_ctx(|ctx| {
         for size in 0..100 {
             for _ in 0..100 {
@@ -140,7 +140,7 @@ fn hash_test0() -> Result<(), Box<dyn Error>> {
                 assert_eq!(l, r);
             }
             for _ in 0..100 {
-                let n = rng.gen_biguint(size as u64);
+                let n = rng.random_biguint(size as u64);
                 let l = ctx.mk_nat_lit_quick(n.clone()).expect("nat extension should construct a literal");
                 let r = ctx.mk_nat_lit_quick(n.clone()).expect("nat extension should construct a repeated literal");
                 match ctx.read_expr(l) {
