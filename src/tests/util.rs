@@ -101,6 +101,16 @@ fn check_proj_from_prop() {
     )
 }
 
+#[test]
+#[should_panic(expected = "assertion failed: self.def_eq")]
+fn rejects_distinct_regular_application_arguments() {
+    let (export_file, _) = test_get_export_file(Some(Path::new(
+        "test_resources/CongruenceArgs/config.json",
+    )))
+    .unwrap();
+    export_file.check_all_declars();
+}
+
 pub(crate) fn rand_string<'t>(rng: &mut ThreadRng, size: usize) -> CowStr<'t> {
     use rand::RngExt;
     let rand_string: String = rng.sample_iter(&Alphanumeric).take(size).map(char::from).collect();
