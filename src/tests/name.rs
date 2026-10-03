@@ -1,7 +1,12 @@
 use crate::name::{format_name, is_id_first, is_id_rest, parse_name, NameComponent};
+use crate::parser::parse_export_file;
+use crate::pretty_printer::PpOptions;
 use crate::tests::util::test_ctx;
-use std::error::Error;
+use crate::util::{Config, PpDestination};
 use std::borrow::Cow;
+use std::error::Error;
+use std::fs::File;
+use std::io::{BufWriter, Cursor};
 
 #[test]
 fn pfx_test_anon() -> Result<(), Box<dyn Error>> {
@@ -136,5 +141,76 @@ fn format_name_round_trips() {
             })
             .collect();
         assert_eq!(parse_name(&format_name(&name)), Some(name));
+    }
+}
+
+#[test]
+fn context_names_preserve_quoted_component_boundaries() -> Result<(), Box<dyn Error>> {
+    test_ctx(None, |ctx| {
+        for source in ["A", "«b c»", "A.«b c»", "A.«b.c»"] {
+            let components = parse_name(source).unwrap();
+            let name = ctx.name_from_components(&components);
+            assert_eq!(ctx.name_components(name), components, "input: {source}");
+            assert_eq!(format_name(&ctx.name_components(name)), source, "input: {source}");
+        }
+    })
+}
+
+fn quoted_name_config(pp_declars: Vec<String>) -> Config {
+    let names = ["A", "«b c»", "A.«b c»", "A.«b.c»"].map(str::to_string).to_vec();
+    Config {
+        export_file_path: None,
+        use_stdin: true,
+        permitted_axioms: Some(names),
+        unpermitted_axiom_hard_error: true,
+        num_threads: 1,
+        nat_extension: false,
+        string_extension: false,
+        pp_declars: Some(pp_declars),
+        unknown_pp_declar_hard_error: true,
+        pp_options: PpOptions::default(),
+        pp_output_path: None,
+        pp_to_stdout: false,
+        print_success_message: false,
+        print_axioms: false,
+        unsafe_permit_all_axioms: false,
+    }
+}
+
+const QUOTED_NAME_EXPORT: &str = concat!(
+    "{\"meta\":{\"exporter\":{\"name\":\"lean4export\",\"version\":\"3.1.0\"},\"format\":{\"version\":\"3.1.0\"},\"lean\":{\"githash\":\"470d5ce1400764999581fd26d5d72b00d990b0f4\",\"version\":\"4.35.0-rc3\"}}}\n",
+    "{\"in\":1,\"str\":{\"pre\":0,\"str\":\"A\"}}\n",
+    "{\"in\":2,\"str\":{\"pre\":0,\"str\":\"b c\"}}\n",
+    "{\"in\":3,\"str\":{\"pre\":1,\"str\":\"b c\"}}\n",
+    "{\"in\":4,\"str\":{\"pre\":1,\"str\":\"b.c\"}}\n",
+    "{\"ie\":0,\"sort\":0}\n",
+    "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[],\"name\":1,\"type\":0}}\n",
+    "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[],\"name\":2,\"type\":0}}\n",
+    "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[],\"name\":3,\"type\":0}}\n",
+    "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[],\"name\":4,\"type\":0}}\n",
+);
+
+#[test]
+fn pp_declars_select_quoted_names_by_components() {
+    let requested = ["A", "«b c»", "A.«b c»", "A.«b.c»"].map(str::to_string).to_vec();
+    let (export, _) = parse_export_file(Cursor::new(QUOTED_NAME_EXPORT), quoted_name_config(requested)).unwrap();
+    let path = std::env::temp_dir().join(format!("nanoda-quoted-names-{}.txt", std::process::id()));
+    let file = File::create(&path).unwrap();
+    let mut destination = PpDestination::File(BufWriter::new(file));
+    assert!(export.pp_selected_declars(Some(&mut destination)).is_empty());
+    drop(destination);
+    let output = std::fs::read_to_string(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    for name in ["A", "«b c»", "A.«b c»", "A.«b.c»"] {
+        assert!(output.contains(&format!("axiom {name} : Prop")), "missing {name:?} in {output:?}");
+    }
+}
+
+#[test]
+fn pp_declars_reject_flattened_non_identifier_alias() {
+    let result = parse_export_file(Cursor::new(QUOTED_NAME_EXPORT), quoted_name_config(vec!["A.b c".to_string()]));
+    match result {
+        Err(error) => assert_eq!(error.to_string(), "invalid name in pp_declars: \"A.b c\""),
+        Ok(_) => panic!("flattened non-identifier alias was accepted"),
     }
 }

@@ -956,6 +956,9 @@ impl TryFrom<&Path> for Config {
                 if let Some(name) = config.permitted_axioms.iter().flatten().find(|name| parse_name(name).is_none()) {
                     return Err(Box::from(format!("invalid name in permitted_axioms: {:?}", name)))
                 }
+                if let Some(name) = config.pp_declars.iter().flatten().find(|name| parse_name(name).is_none()) {
+                    return Err(Box::from(format!("invalid name in pp_declars: {:?}", name)))
+                }
                 Ok(config)
             }
         }
@@ -1017,4 +1020,3 @@ struct ExitStatus {
     tc_err: Option<String>,
     pp_err: Option<String>
 }
-

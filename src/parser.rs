@@ -389,6 +389,9 @@ pub(crate) fn parse_export_file<'p, R: BufRead>(
     config: Config,
 
 ) -> Result<(crate::util::ExportFile<'p>, Vec<String>), Box<dyn Error>> {
+    if let Some(name) = config.pp_declars.iter().flatten().find(|name| parse_name(name).is_none()) {
+        return Err(Box::from(format!("invalid name in pp_declars: {:?}", name)))
+    }
     let mut parser = Parser::new(buf_reader, config);
     let mut line_buffer = String::new();
 
@@ -407,13 +410,12 @@ pub(crate) fn parse_export_file<'p, R: BufRead>(
     // in the export file.
     if parser.config.unknown_pp_declar_hard_error {
         if let Some(pp_declars) = parser.config.pp_declars.as_ref() {
-            let mut pp_declar_names = pp_declars.iter().map(|s| s.as_str()).collect::<crate::util::FxHashSet<&str>>();
+            let mut pp_declar_names = pp_declars.iter().filter_map(|s| parse_name(s)).collect::<crate::util::FxHashSet<_>>();
             for declar_name in parser.declars.keys() {
-                let n = parser.name_to_string(*declar_name);
-                pp_declar_names.remove(n.as_str());
+                pp_declar_names.remove(&parser.name_components(*declar_name));
             }
             if pp_declar_names.len() > 0 {
-                let list = pp_declar_names.into_iter().collect::<Vec<&str>>();
+                let list = pp_declar_names.into_iter().map(|n| format_name(&n)).collect::<Vec<_>>();
                 return Err(Box::from(format!("these pp_declars were not found in the exported environment: {:#?}", list)))
             }
         }

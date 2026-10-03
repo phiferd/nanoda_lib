@@ -27,6 +27,36 @@ impl<'a> Name<'a> {
 }
 
 impl<'x, 't: 'x, 'p: 't> TcCtx<'t, 'p> {
+    pub(crate) fn name_components(&self, n: NamePtr<'t>) -> Vec<NameComponent> {
+        match self.read_name(n) {
+            Anon => Vec::new(),
+            Str(pfx, sfx, _) => {
+                let mut components = self.name_components(pfx);
+                components.push(NameComponent::Str(self.read_string(sfx).to_string()));
+                components
+            }
+            Num(pfx, sfx, _) => {
+                let mut components = self.name_components(pfx);
+                components.push(NameComponent::Num(sfx));
+                components
+            }
+        }
+    }
+
+    pub(crate) fn name_from_components(&mut self, components: &[NameComponent]) -> NamePtr<'t> {
+        let mut out = self.anonymous();
+        for component in components {
+            out = match component {
+                NameComponent::Str(s) => {
+                    let s = self.alloc_string(CowStr::Owned(s.clone()));
+                    self.str(out, s)
+                }
+                NameComponent::Num(n) => self.num(out, *n),
+            };
+        }
+        out
+    }
+
     pub(crate) fn get_pfx(&self, mut n: NamePtr<'t>) -> NamePtr<'t> {
         let anonymous = self.anonymous();
         loop {
@@ -122,7 +152,7 @@ fn is_id(s: &str) -> bool {
 
 /// A name component. Outside the export file's name table, a name is a `Vec<NameComponent>` in
 /// source order, e.g. `Quot.sound` is `[Str("Quot"), Str("sound")]`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum NameComponent {
     Str(String),
     Num(u64),
